@@ -27,6 +27,9 @@
 #define POST_QUICK_COMBAT_DELAY	110
 #define POST_COMBAT_DELAY		1
 
+extern int jjC = 0;
+extern int jjCOther = 0;
+
 //	---------------------------------------------------------------------------
 static int GetPostCombatDelay()
 {
@@ -110,6 +113,42 @@ void CvUnitCombat::GenerateMeleeCombatInfo(CvUnit& kAttacker, CvUnit* pkDefender
 	pkCombatInfo->setUnit(BATTLE_UNIT_ATTACKER, &kAttacker);
 	pkCombatInfo->setUnit(BATTLE_UNIT_DEFENDER, pkDefender);
 	pkCombatInfo->setPlot(&plot);
+
+	CvUnit* jattacker = pkCombatInfo->getUnit(BATTLE_UNIT_ATTACKER);
+	CvUnit* jdefender = pkCombatInfo->getUnit(BATTLE_UNIT_DEFENDER);
+
+	jjCOther = 1;
+	if(GC.getJJCLogging(1)== 2){
+		if(jattacker->isHuman()){jjC = 1;jjCOther = 0;}
+		
+	}
+	else if(GC.getJJCLogging(1)== 3){
+		if(pkDefender->isHuman()){jjC = 1;jjCOther = 0;}
+	}
+	else if(GC.getJJCLogging(1)== 4){
+		if(kAttacker.isHuman() || pkDefender->isHuman()){jjC = 1;jjCOther = 0;}
+	}
+	else if(GC.getJJCLogging(1)== 5){
+		if(jdefender->isHuman()){jjC = 1;jjCOther = 0;}
+		
+	}
+	else if(GC.getJJCLogging(1)== 6){
+		jjC = 1;jjCOther = 0;
+	}
+	else if(GC.getJJCLogging(1)== 7){
+		if(pkDefender->isHuman()){jjC = 0;jjCOther = 0;}
+	}
+	else if(GC.getJJCLogging(1)==1){	
+		if(jattacker->isHuman() || jdefender->isHuman()){jjC = 1;jjCOther = 0;}
+		
+	}
+	else{
+	
+		jjC = 0;
+		
+	}
+	
+	//int jjrand = rand();
 
 	// Attacking a City
 	if(plot.isCity())
@@ -244,7 +283,8 @@ void CvUnitCombat::GenerateMeleeCombatInfo(CvUnit& kAttacker, CvUnit* pkDefender
 #if defined(MOD_UNITS_MAX_HP)
 		int iDefenderMaxHP = pkDefender->GetMaxHitPoints();
 #endif
-
+		//pkDefender->jlogmsg("JJC = ",jjC,0); 
+		//pkDefender->jlogmsg("rand = ",jjrand,0);
 		int iDefenderStrength = pkDefender->GetMaxDefenseStrength(&plot, &kAttacker);
 		int iAttackerStrength = 0;
 		if(kAttacker.GetMaxRangedCombatStrength(NULL, /*pCity*/ NULL, true, true) > 0 && kAttacker.getDomainType() == DOMAIN_AIR)
@@ -257,6 +297,9 @@ void CvUnitCombat::GenerateMeleeCombatInfo(CvUnit& kAttacker, CvUnit* pkDefender
 		}
 		else
 		{
+			//kAttacker.jlogmsg("JJC = ",jjC,0); 
+			//kAttacker.jlogmsg("rand = ",jjrand,0);
+			
 			iAttackerStrength = kAttacker.GetMaxAttackStrength(kAttacker.plot(), &plot, pkDefender);
 		}
 
@@ -445,6 +488,9 @@ void CvUnitCombat::GenerateMeleeCombatInfo(CvUnit& kAttacker, CvUnit* pkDefender
 	}
 
 	GC.GetEngineUserInterface()->setDirty(UnitInfo_DIRTY_BIT, true);
+
+	jjC = 0;
+	jjCOther = 0;
 }
 
 //	---------------------------------------------------------------------------
@@ -765,6 +811,43 @@ void CvUnitCombat::GenerateRangedCombatInfo(CvUnit& kAttacker, CvUnit* pkDefende
 	int iMaxXP = 0;
 	int iDamage = 0;
 	int iTotalDamage = 0;
+	
+	
+		
+	CvUnit* jattacker = pkCombatInfo->getUnit(BATTLE_UNIT_ATTACKER);
+	CvUnit* jdefender = pkCombatInfo->getUnit(BATTLE_UNIT_ATTACKER);
+
+jjCOther = 1;
+	if(GC.getJJCLogging(1)== 2){
+		if(jattacker->isHuman()){jjC = 1;jjCOther = 0;}
+		
+	}
+	else if(GC.getJJCLogging(1)== 3){
+		if(pkDefender->isHuman()){jjC = 1;jjCOther = 0;}
+	}
+	else if(GC.getJJCLogging(1)== 4){
+		if(kAttacker.isHuman() || pkDefender->isHuman()){jjC = 1;jjCOther = 0;}
+	}
+	else if(GC.getJJCLogging(1)== 5){
+		if(jdefender->isHuman()){jjC = 1;jjCOther = 0;}
+		
+	}
+	else if(GC.getJJCLogging(1)== 6){
+		jjC = 1;jjCOther = 0;
+	}
+	else if(GC.getJJCLogging(1)== 7){
+		if(pkDefender->isHuman()){jjC = 0;jjCOther = 0;}
+	}
+	else if(GC.getJJCLogging(1)==1){	
+		if(jattacker->isHuman() || jdefender->isHuman()){jjC = 1;jjCOther = 0;}
+		
+	}
+	else{
+	
+		jjC = 0;
+		
+	}
+	
 	PlayerTypes eDefenderOwner;
 	if(!plot.isCity())
 	{
@@ -963,6 +1046,9 @@ void CvUnitCombat::GenerateRangedCombatInfo(CvUnit& kAttacker, CvUnit* pkDefende
 	pkCombatInfo->setDefenderRetaliates(false);
 
 	GC.GetEngineUserInterface()->setDirty(UnitInfo_DIRTY_BIT, true);
+
+	jjC = 0;
+	jjCOther = 0;
 }
 
 //	---------------------------------------------------------------------------

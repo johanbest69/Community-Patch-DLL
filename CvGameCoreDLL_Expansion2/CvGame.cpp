@@ -10336,6 +10336,9 @@ unsigned long hash32(unsigned long a)
 
 int CvGame::getSmallFakeRandNum(int iNum, const CvPlot& input)
 {
+	
+	return getJonRandNum(iNum, NULL);
+	
 	unsigned long iState = input.getX()*17 + input.getY()*23 + getGameTurn()*3;
 	
 	int iResult = 0;
@@ -10357,6 +10360,9 @@ int CvGame::getSmallFakeRandNum(int iNum, const CvPlot& input)
 
 int CvGame::getSmallFakeRandNum(int iNum, int iExtraSeed)
 {
+	
+	return getJonRandNum(iNum, NULL);
+	
 	unsigned long iState = getGameTurn() + abs(iExtraSeed);
 
 	int iResult = 0;

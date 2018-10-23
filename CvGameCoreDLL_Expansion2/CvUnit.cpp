@@ -43,8 +43,9 @@
 #include "CvGameQueries.h"
 #include "CvBarbarians.h"
 
-#if !defined(FINAL_RELEASE)
 #include <sstream>
+#if !defined(FINAL_RELEASE)
+//#include <sstream>
 
 // If defined, various operations related to the movement of units will be logged.
 //#define LOG_UNIT_MOVES
@@ -130,6 +131,7 @@ OBJECT_VALIDATE_DEFINITION(CvUnit)
 CvUnit::CvUnit() :
 	m_syncArchive(*this)
 	, m_iID("CvUnit::m_iID", m_syncArchive)
+	, m_iTracked("CvUnit::m_iTracked", m_syncArchive)
 	, m_iHotKeyNumber("CvUnit::m_iHotKeyNumber", m_syncArchive)
 	, m_iX("CvUnit::m_iX", m_syncArchive, true)
 	, m_iY("CvUnit::m_iY", m_syncArchive, true)
@@ -1047,13 +1049,22 @@ void CvUnit::initWithNameOffset(int iID, UnitTypes eUnit, int iNameOffset, UnitA
 
 	// free XP from handicap?
 	int iXP = GC.getGame().getHandicapInfo().getAIFreeXP();
+	if(GC.getJJCLogging(3)==1){jlogmsg("pre xp bonus = ",iXP,0);}
 	if (iXP && !kPlayer.isHuman() && /*kPlayer.GetID() < MAX_MAJOR_CIVS &&*/ canAcquirePromotionAny())
 	{
+		if (strcmp(getName().GetCString(), "Pathfinder") != 0) {
+			if (GC.getJJCLogging(3) == 1) { jlogmsg("xp bonus = ", iXP, 0); }
+
 #if defined(MOD_UNITS_XP_TIMES_100)
-		changeExperienceTimes100(iXP * 100);
+			changeExperienceTimes100(iXP * 100);
 #else
-		changeExperience(iXP);
+			changeExperience(iXP);
 #endif
+		}
+		else{
+			m_iTracked = 1;
+		}
+
 	}
 
 	// bonus xp in combat from handicap?
@@ -1384,6 +1395,7 @@ void CvUnit::reset(int iID, UnitTypes eUnit, PlayerTypes eOwner, bool bConstruct
 	archive.reset();
 
 	m_iID = iID;
+	m_iTracked = 0;
 	m_iHotKeyNumber = -1;
 	m_iX = INVALID_PLOT_COORD;
 	m_iY = INVALID_PLOT_COORD;
@@ -5470,15 +5482,50 @@ bool CvUnit::IsAngerFreeUnit() const
 	return false;
 }
 
+bool CvUnit::jlogmsg(const char* jString, int jInt, double jDouble) const
+{
+	FILogFile* jLog;
+	jLog = LOGFILEMGR.GetLog("combatlog", FILogFile::kDontTimeStamp);
+	std::stringstream jjss;
+	jjss << "Turn:" << GC.getGame().getGameTurn() << " " << GET_PLAYER(getOwner()).getCivilizationInfo().GetTextKey() << " ID:" << m_iID << " " << getName().GetCString() << " : " <<  jString;
+	
+	if (jInt) {
+		jjss << jInt;
+	}
+	else {
+		jjss << jDouble;
+	}
+	
+	std::string jjs = jjss.str();
+	const TCHAR* jjs2 = jjs.data();
+
+	jLog->Msg(jjs2);
+	//jLog->Close();
+	return true;
+}
+
 //	---------------------------------------------------------------------------
 int CvUnit::getCombatDamage(int iStrength, int iOpponentStrength, int iCurrentDamage, bool bIncludeRand, bool bAttackerIsCity, bool bDefenderIsCity) const
 {
 	VALIDATE_OBJECT
 	// The roll will vary damage between 40 and 60 (out of 100) for two units of identical strength
 
+//FILogFile* jLog;
+	//jLog = LOGFILEMGR.GetLog("combatlog", FILogFile::kDontTimeStamp);
+
 	int iDamageRatio;
 
 	int iWoundedDamageMultiplier = /*50*/ GC.getWOUNDED_DAMAGE_MULTIPLIER();
+	extern int jjC;
+	
+	int jjt;
+	int jjtemp = 0;
+	if(m_iTracked){
+		jjtemp = 1;
+	}else{
+		jjtemp = jjC;
+	}
+	//std::string jjts;
 
 	if(bAttackerIsCity)
 	{
@@ -5493,20 +5540,33 @@ int CvUnit::getCombatDamage(int iStrength, int iOpponentStrength, int iCurrentDa
 	{
 		// Mod (Policies, etc.)
 		iWoundedDamageMultiplier += GET_PLAYER(getOwner()).GetWoundedUnitDamageMod();
-#if defined(MOD_BALANCE_CORE)
-		if (IsStrongerDamaged() && iWoundedDamageMultiplier != 0)
-		{
-			iWoundedDamageMultiplier += GC.getTRAIT_WOUNDED_DAMAGE_MOD();
-		}
-#endif
+#if defined(MOD_BALANCE_CORE) 
+			if (IsStrongerDamaged() && iWoundedDamageMultiplier != 0)
+			{
+				iWoundedDamageMultiplier += GC.getTRAIT_WOUNDED_DAMAGE_MOD();
+			}
 
+#endif	
+		
 #if defined(MOD_UNITS_MAX_HP)
 		iDamageRatio = GetMaxHitPoints() - (iCurrentDamage * iWoundedDamageMultiplier / 100);
+	jjt = GetMaxHitPoints();
+	//jjts = "modmax";
+	
 #else
-		iDamageRatio = GC.getMAX_HIT_POINTS() - (iCurrentDamage * iWoundedDamageMultiplier / 100);
+iDamageRatio = GC.getMAX_HIT_POINTS() - (iCurrentDamage * iWoundedDamageMultiplier / 100);
+jjt = GC.getMAX_HIT_POINTS();
+//jjts = "modold";
 #endif
-	}
 
+	
+			if(bIncludeRand && jjtemp){jlogmsg("idmgratio = ",iDamageRatio,0);
+			
+			jlogmsg("currdmg = ",iCurrentDamage,0);
+			//CUSTOMLOG("JJC max hit = %i ,  curr dmg = %i ,  wounded multi = %i", jjt, iCurrentDamage,iWoundedDamageMultiplier);
+			}
+	}
+//jlogmsg("idmgratio = ",iDamageRatio,0);
 	int iDamage = 0;
 
 #if defined(MOD_UNITS_MAX_HP)
@@ -5514,13 +5574,15 @@ int CvUnit::getCombatDamage(int iStrength, int iOpponentStrength, int iCurrentDa
 #else
 	iDamage = /*400*/ GC.getATTACK_SAME_STRENGTH_MIN_DAMAGE() * iDamageRatio / GC.getMAX_HIT_POINTS();
 #endif
-
+if(bIncludeRand && jjtemp){jlogmsg("idamage = ",iDamage,0);}
+	//jlogmsg("idamage = ",iDamage,0);
 	// Don't use rand when calculating projected combat results
 	int iRoll = 0;
 	if(bIncludeRand)
 	{
 		iRoll = /*1200*/ GC.getGame().getSmallFakeRandNum(GC.getATTACK_SAME_STRENGTH_POSSIBLE_EXTRA_DAMAGE(), *plot());
-
+if(bIncludeRand && jjtemp){jlogmsg("rand roll = ",iRoll,0);}
+//jlogmsg("rand roll = ",iRoll,0);
 		iRoll *= iDamageRatio;
 #if defined(MOD_UNITS_MAX_HP)
 		iRoll /= GetMaxHitPoints();
@@ -5541,12 +5603,18 @@ int CvUnit::getCombatDamage(int iStrength, int iOpponentStrength, int iCurrentDa
 		iRoll /= 2;	// The divide by 2 is to provide the average damage
 	}
 	iDamage += iRoll;
+	if(bIncludeRand && jjtemp){jlogmsg("new dmg after roll = ",iDamage,0);}
+	//jlogmsg("new dmg after roll = ",iRoll,0);
+	//iDamage += 3000;
 
 	// Calculations performed to dampen amount of damage by units that are close in strength
 	// RATIO = (((((ME / OPP) + 3) / 4) ^ 4) + 1) / 2
 	// Examples:
 	// 1.301 = (((((9 / 6) + 3) / 4) ^ 4) + 1 / 2
 	// 17.5 = (((((40 / 6) + 3) / 4) ^ 4) + 1 / 2
+
+if(bIncludeRand && jjtemp){jlogmsg("str 1= ",iStrength,0);}
+if(bIncludeRand && jjtemp){jlogmsg("str 2= ",iOpponentStrength,0);}
 
 	double fStrengthRatio = (double(iStrength) / iOpponentStrength);
 
@@ -5565,9 +5633,21 @@ int CvUnit::getCombatDamage(int iStrength, int iOpponentStrength, int iCurrentDa
 	{
 		fStrengthRatio = 1 / fStrengthRatio;
 	}
+	
+	//char buffer[32];
+	//printf(buffer, sizeof(buffer), "%g", fStrengthRatio);
+	
+	
+	//std::stringstream jjss;
+	//jjss << "str ratio = " << fStrengthRatio;
+	//std::string jjs = jjss.str();
+	//const TCHAR* jjs2 = jjs.data();
+
+	if(bIncludeRand && jjtemp){jlogmsg("str ratio = ",0, fStrengthRatio);}
+		//jlogmsg("str ratio = ",0, fStrengthRatio);
 
 	iDamage = int(iDamage * fStrengthRatio);
-
+if(bIncludeRand && jjtemp){jlogmsg("final dmg after ratio = ",iDamage,0);}
 	// Modify damage for when a city "attacks" a unit
 	if(bAttackerIsCity)
 	{
@@ -5594,6 +5674,7 @@ int CvUnit::getCombatDamage(int iStrength, int iOpponentStrength, int iCurrentDa
 
 	iDamage = iDamage > 0 ? iDamage : 1;
 
+//jLog->Close();
 	return iDamage;
 }
 
@@ -14098,6 +14179,9 @@ void CvUnit::promote(PromotionTypes ePromotion, int iLeaderUnitId)
 	if(!pkPromotionInfo->IsLeader())
 	{
 		changeLevel(1);
+		if(m_iTracked){
+			jlogmsg("Promoted",0,0);
+		}
 	}
 
 	// Insta-Heal: never earned
@@ -15786,19 +15870,68 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 {
 	VALIDATE_OBJECT
 
+	extern int jjC;
+	extern int jjCOther;
+	
+	int jjC2 = 1;
+
+	if (m_iTracked && jjCOther) {
+		jjC2 = 1;
+	}
+	else if (GC.getJJCLogging(2) == 1) {
+		jjC2 = jjC;
+	}
+	else if (GC.getJJCLogging(2) == 2) {
+		jjC2 = 1;
+	}
+	else if (GC.getJJCLogging(2) == 3) {
+		return 58;
+	}
+	else {
+		jjC2 = 0;
+	}
+
 	//simple caching for speedup
 	SStrengthModifierInput input(pOtherUnit, pBattlePlot, bIgnoreUnitAdjacencyBoni, pFromPlot, bQuickAndDirty);
+
+	if (!jjC2) {
 	for (size_t i = 0; i<m_lastStrengthModifiers.size(); i++)
 	if (input == m_lastStrengthModifiers[i].first)
 		return m_lastStrengthModifiers[i].second;
 
+	}
 	int iModifier = 0;
 	int iTempModifier;
-
+	
+	
+	
+//jlogmsg("JJC = ",jjC,0);
 	// Generic combat bonus
 	iTempModifier = getExtraCombatPercent();
 	iModifier += iTempModifier;
+	if(jjC2){
+		
+	jlogmsg("Gen combat bonus = ",iTempModifier,0);
 
+std::stringstream jjpromos;
+
+for(int iI = 0; iI < GC.getNumPromotionInfos(); iI++)
+	{
+		const PromotionTypes ePromotion = static_cast<PromotionTypes>(iI);
+		if(isHasPromotion(ePromotion)){
+			CvPromotionEntry* pkPromotionInfo = GC.getPromotionInfo(ePromotion);
+			jjpromos << pkPromotionInfo->GetType() << " + " << pkPromotionInfo->GetCombatPercent() << " , ";
+		}
+		
+	}
+	
+	if(jjpromos){
+		
+		std::string jjp = jjpromos.str();
+			
+		jlogmsg(jjp.data(),0,0);
+	}
+}
 	CvPlayerAI& kPlayer = GET_PLAYER(getOwner());
 
 	CvGameReligions* pReligions = GC.getGame().GetGameReligions();
@@ -15812,19 +15945,22 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 #if defined(MOD_GLOBAL_CS_RAZE_RARELY)
 	if((!kPlayer.isMinorCiv() && kPlayer.IsEmpireUnhappy()) || (kPlayer.isMinorCiv() && kPlayer.IsEmpireVeryUnhappy()))
 #else
-	if(kPlayer.IsEmpireUnhappy())
-#endif
-	{
+	if(kPlayer.IsEmpireUnhappy()){
+		
 		iModifier += GetUnhappinessCombatPenalty();
+		if(jjC2){jlogmsg("Unhappy penalty = ",GetUnhappinessCombatPenalty(),0);}
 	}
+#endif
+	
 
 #if defined(MOD_BALANCE_CORE_MILITARY)
 	if (!MOD_BALANCE_CORE_MILITARY)
 	{
 	// Over our strategic resource limit?
 	iTempModifier = GetStrategicResourceCombatPenalty();
-	if (iTempModifier != 0)
+	if (iTempModifier != 0){
 		iModifier += iTempModifier;
+		if(jjC2){jlogmsg("stategic penalty = ",iTempModifier,0);}}
 #endif
 #if defined(MOD_BALANCE_CORE_MILITARY)
 	}
@@ -15836,11 +15972,13 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 	if (GetNearbyCityBonusCombatMod(pBattlePlot) != 0)
 	{
 		iModifier += GetNearbyCityBonusCombatMod(pBattlePlot);
+		if(jjC2){jlogmsg("nearby city bonus = ",GetNearbyCityBonusCombatMod(pBattlePlot),0);}
 	}
 	// Great General nearby
 	if (!bIgnoreUnitAdjacencyBoni && !IsIgnoreGreatGeneralBenefit())
 	{
 		iModifier += GetAreaEffectBonus(AE_GREAT_GENERAL, pBattlePlot);
+		if(jjC2){jlogmsg("great general bonus = ",GetAreaEffectBonus(AE_GREAT_GENERAL, pBattlePlot),0);}
 	}
 
 #if defined(MOD_BALANCE_CORE)
@@ -15876,6 +16014,7 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 		}
 	}
 	iModifier += iCSStrengthMod;
+	if (jjC2) { jlogmsg("cs ally str mod = ", iCSStrengthMod, 0); }
 #endif
 
 	//sometimes we ignore the finer points
@@ -15886,6 +16025,7 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 		if (iReverseGGModifier != 0)
 		{
 			iModifier += iReverseGGModifier;
+			if (jjC2) { jlogmsg("reverse gg = ", iReverseGGModifier, 0); }
 		}
 
 		// Improvement with combat bonus (from trait) nearby
@@ -15893,23 +16033,27 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 		if (iNearbyImprovementModifier != 0)
 		{
 			iModifier += iNearbyImprovementModifier;
+			if (jjC2) { jlogmsg("nearby improv trait = ", iNearbyImprovementModifier, 0); }
 		}
 		// UnitClass grants a combat bonus if nearby
 		int iNearbyUnitClassModifier = GetNearbyUnitClassModifierFromUnitClass(pBattlePlot);
 		if (iNearbyUnitClassModifier != 0)
 		{
 			iModifier += iNearbyUnitClassModifier;
+			if (jjC2) { jlogmsg("nearby unit class = ", iNearbyUnitClassModifier, 0); }
 		}
 		// NearbyUnit gives a Combat Modifier?
 		int iGetGiveCombatModifier = GetGiveCombatModToUnit(pFromPlot);
 		if (iGetGiveCombatModifier != 0)
 		{
 			iModifier += iGetGiveCombatModifier;
+			if (jjC2) { jlogmsg("nearby unit = ", iGetGiveCombatModifier, 0); }
 		}
 		// Adjacent Friendly military Unit?
 		if (pFromPlot->IsFriendlyUnitAdjacent(getTeam(), /*bCombatUnit*/ true))
 		{
 			iModifier += GetAdjacentModifier();
+			if (jjC2) { jlogmsg("adj unit = ", GetAdjacentModifier(), 0); }
 			for (int iI = 0; iI < GC.getNumUnitCombatClassInfos(); iI++) // Stuff for per adjacent unit combat
 			{
 				const UnitCombatTypes eUnitCombat = static_cast<UnitCombatTypes>(iI);
@@ -15919,20 +16063,24 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 					int iNumFriendliesAdjacent = 0;
 					iNumFriendliesAdjacent += pFromPlot->GetNumSpecificFriendlyUnitCombatsAdjacent(getTeam(), eUnitCombat, NULL);
 					iModifier += (iNumFriendliesAdjacent * iModPerAdjacent);
+					if (jjC2) { jlogmsg("multi adj unit = ", (iNumFriendliesAdjacent * iModPerAdjacent), 0); }
 				}
 			}
 		}
 	}
 
 	// Our empire fights well in Golden Ages?
-	if(kPlayer.isGoldenAge())
+	if(kPlayer.isGoldenAge()){
 		iModifier += kPlayer.GetPlayerTraits()->GetGoldenAgeCombatModifier();
+		if (jjC2) { jlogmsg("golden age bonus = ", kPlayer.GetPlayerTraits()->GetGoldenAgeCombatModifier(), 0); }
+		}
 
 #if defined(MOD_BALANCE_CORE_MILITARY_PROMOTION_ADVANCED)
 	//Domination Victory -- If a player owns more than one capital, your troops fight a % better as a result (% = % of global capitals owned).
 	if(MOD_BALANCE_CORE_MILITARY_RESISTANCE && pOtherUnit != NULL)
 	{
 		iModifier += GetResistancePower(pOtherUnit);
+		if (jjC2) { jlogmsg("domination capital bonus = ", GetResistancePower(pOtherUnit), 0); }
 	}			
 #endif
 	////////////////////////
@@ -15946,6 +16094,7 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 		{
 			iTempModifier = getFriendlyLandsModifier();
 			iModifier += iTempModifier;
+			if (jjC2) { jlogmsg("fighting own lands  = ", iTempModifier, 0); }
 
 			// Founder Belief bonus
 			CvCity* pPlotCity = pBattlePlot->getOwningCity();
@@ -15965,6 +16114,7 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 						}
 						iTempModifier = pCityReligion->m_Beliefs.GetCombatModifierFriendlyCities(getOwner(), pHolyCity);
 						iModifier += iTempModifier;
+						if (jjC2) { jlogmsg("religious bonus  = ", iTempModifier, 0); }
 					}
 				}
 			}
@@ -15974,13 +16124,16 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 		{
 			iTempModifier = getOutsideFriendlyLandsModifier();
 			iModifier += iTempModifier;
+			if (jjC2) { jlogmsg("fighting outside own lands  = ", iTempModifier, 0); }
 
 			// Bonus against city states?
 			if(pBattlePlot->isCity() && pBattlePlot->getOwner()!=NO_PLAYER && GET_PLAYER(pBattlePlot->getOwner()).isMinorCiv())
 			{
 				iModifier += kPlayer.GetPlayerTraits()->GetCityStateCombatModifier();
+				if (jjC2) { jlogmsg("city state bonus 1  = ", kPlayer.GetPlayerTraits()->GetCityStateCombatModifier(), 0); }
 #if defined(MOD_BALANCE_CORE)
 				iModifier += kPlayer.GetCityStateCombatModifier();
+				if (jjC2) { jlogmsg("city state bonus 2  = ", kPlayer.GetCityStateCombatModifier(), 0); }
 #endif
 			}
 #if defined(MOD_BALANCE_CORE)
@@ -15990,6 +16143,7 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 				if(kPlayer.isGoldenAge())
 				{
 					iModifier += kPlayer.GetPlayerTraits()->GetConquestOfTheWorldCityAttack();
+					if (jjC2) { jlogmsg("bonus vs other civ  = ", kPlayer.GetPlayerTraits()->GetConquestOfTheWorldCityAttack(), 0); }
 				}
 			}
 #endif
@@ -16013,6 +16167,7 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 							}
 							iTempModifier = pCityReligion->m_Beliefs.GetCombatModifierEnemyCities(getOwner(), pHolyCity);
 							iModifier += iTempModifier;
+							if (jjC2) { jlogmsg("religious 2  = ", iTempModifier, 0); }
 						}
 					}
 				}
@@ -16051,12 +16206,14 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 							{
 									iTempModifier = iOtherOwn;
 									iModifier += iTempModifier;
+									if (jjC2) { jlogmsg("religious 3  = ", iTempModifier, 0); }
 							}
 							//Bonus in their land
 							else if((iOtherTheir > 0) && pBattlePlot->IsFriendlyTerritory(pOtherUnit->getOwner()))
 							{
 								iTempModifier = iOtherTheir;
 								iModifier += iTempModifier;
+								if (jjC2) { jlogmsg("religious 4  = ", iTempModifier, 0); }
 							}
 						}
 						//Same religion (or no religion) - half bonus.
@@ -16070,12 +16227,15 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 							{
 									iTempModifier = (iOtherOwn / 2);
 									iModifier += iTempModifier;
+									if (jjC2) { jlogmsg("religious 5  = ", iTempModifier, 0); }
+									
 							}
 							//Bonus in their land
 							else if((iOtherTheir > 0) && pBattlePlot->IsFriendlyTerritory(pOtherUnit->getOwner()))
 							{
 								iTempModifier = (iOtherTheir / 2);
 								iModifier += iTempModifier;
+								if (jjC2) { jlogmsg("religious 6  = ", iTempModifier, 0); }
 							}
 						}
 					}
@@ -16097,6 +16257,7 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 				if (iTempModifier > 0)
 				{
 					iModifier += iTempModifier;
+					if (jjC2) { jlogmsg("capital def  = ", iTempModifier, 0); }
 				}
 			}
 		}
@@ -16113,6 +16274,7 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 				if(pOtherUnit && pOtherUnit->IsHigherTechThan(eMyUnitType))
 				{
 					iModifier += iTempModifier;
+					if (jjC2) { jlogmsg("bonus vs higher tech  = ", iTempModifier, 0); }
 				}
 			}
 		}
@@ -16134,24 +16296,28 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 			{
 				iTempModifier = /*15*/ GC.getBONUS_PER_ADJACENT_FRIEND() * iNumAdjacentFriends;
 				iModifier += iTempModifier * ((100 + GetFlankAttackModifier()) / 100);
+				if (jjC2) { jlogmsg("flanking  = ", iTempModifier * ((100 + GetFlankAttackModifier()) / 100), 0); }
 			}
 		}
 
 		// Generic Unit Class Modifier
 		iTempModifier = getUnitClassModifier(pOtherUnit->getUnitClassType());
 		iModifier += iTempModifier;
+		if (jjC2) { jlogmsg("gen unit class mod  = ", iTempModifier, 0); }
 
 		// Unit Combat type Modifier
 		if(pOtherUnit->getUnitCombatType() != NO_UNITCOMBAT)
 		{
 			iTempModifier = unitCombatModifier((UnitCombatTypes)pOtherUnit->getUnitCombatType());
 			iModifier += iTempModifier;
+			if (jjC2) { jlogmsg("unit combat type mod  = ", iTempModifier, 0); }
 #if defined(MOD_BALANCE_CORE)
 			CvUnitEntry* pUnitInfo = GC.getUnitInfo(pOtherUnit->getUnitType());
 			if(pUnitInfo != NULL && pUnitInfo->IsMounted())
 			{
 				iTempModifier = unitCombatModifier((UnitCombatTypes)GC.getInfoTypeForString("UNITCOMBAT_MOUNTED", true));
 				iModifier += iTempModifier;
+				if (jjC2) { jlogmsg("unit combat type2  mod  = ", iTempModifier, 0); }
 			}
 #endif
 		}
@@ -16159,13 +16325,16 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 		// Domain Modifier
 		iTempModifier = domainModifier(pOtherUnit->getDomainType());
 		iModifier += iTempModifier;
+		if (jjC2) { jlogmsg("domain mod  = ", iTempModifier, 0); }
 
 		// Bonus against city states?
 		if(GET_PLAYER(pOtherUnit->getOwner()).isMinorCiv())
 		{
 			iModifier += kPlayer.GetPlayerTraits()->GetCityStateCombatModifier();
+			if (jjC2) { jlogmsg("bonus city state 3  = ", kPlayer.GetPlayerTraits()->GetCityStateCombatModifier(), 0); }
 #if defined(MOD_BALANCE_CORE)
 			iModifier += kPlayer.GetCityStateCombatModifier();
+			if (jjC2) { jlogmsg("bonus city state 4  = ", kPlayer.GetCityStateCombatModifier(), 0); }
 #endif
 		}
 
@@ -16175,10 +16344,12 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 			// Generic Barb Combat Bonus
 			iTempModifier = kPlayer.GetBarbarianCombatBonus();
 			iModifier += iTempModifier;
+			if (jjC2) { jlogmsg("generic barb bonus  = ", iTempModifier, 0); }
 
 #if defined(MOD_BALANCE_CORE)
 			iTempModifier = GetBarbarianCombatBonus();
 			iModifier += iTempModifier;
+			if (jjC2) { jlogmsg("generic barb2 bonus  = ", iTempModifier, 0); }
 #endif
 
 			const CvHandicapInfo& thisGameHandicap = GC.getGame().getHandicapInfo();
@@ -16188,6 +16359,7 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 			{
 				iTempModifier = thisGameHandicap.getBarbarianCombatModifier();
 				iModifier += iTempModifier;
+				if (jjC2) { jlogmsg("human bonus  = ", iTempModifier, 0); }
 			}
 #if defined(MOD_BALANCE_CORE)
 			// Minor bonus
@@ -16195,6 +16367,7 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 			{
 				iTempModifier = (thisGameHandicap.getAIBarbarianCombatModifier() / 4);
 				iModifier += iTempModifier;
+				if (jjC2) { jlogmsg("minor civ bonus  = ", iTempModifier, 0); }
 			}
 #endif
 			// AI bonus
@@ -16202,11 +16375,13 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 			{
 				iTempModifier = thisGameHandicap.getAIBarbarianCombatModifier();
 				iModifier += iTempModifier;
+				if (jjC2) { jlogmsg("AI barb bonus  = ", iTempModifier, 0); }
 			}
 
 			if(GC.getGame().isOption(GAMEOPTION_RAGING_BARBARIANS))
 			{
 				iModifier += 25;
+				if (jjC2) { jlogmsg("raging barb bonus  = ", 25, 0); }
 			}
 		}
 
@@ -16217,6 +16392,7 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 			if (pOtherUnit->IsLargerCivThan(this))
 			{
 				iModifier += iTempModifier;
+				if (jjC2) { jlogmsg("vs larger civ bonus  = ", iTempModifier, 0); }
 			}
 		}
 	}
@@ -16234,20 +16410,37 @@ int CvUnit::GetGenericMaxStrengthModifier(const CvUnit* pOtherUnit, const CvPlot
 int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot, const CvUnit* pDefender, 
 								bool bIgnoreUnitAdjacencyBoni, bool bQuickAndDirty) const
 {
+
+	
+
 	VALIDATE_OBJECT
 	if(GetBaseCombatStrength() == 0)
 		return 0;
 
-	int iModifier = GetGenericMaxStrengthModifier(pDefender, pToPlot, bIgnoreUnitAdjacencyBoni, pFromPlot, bQuickAndDirty);
+//FILogFile* jLog2;
+	//jLog2 = LOGFILEMGR.GetLog("combatlog2", FILogFile::kDontTimeStamp);
+	extern int jjC;
+	extern int jjCOther;
+	
+	int jjtemp = 0;
+	if(m_iTracked && jjCOther){
+		jjtemp = 1;
+	}else if(jjC){
+		jjtemp = 1;
+	}
 
+	int iModifier = GetGenericMaxStrengthModifier(pDefender, pToPlot, bIgnoreUnitAdjacencyBoni, pFromPlot, bQuickAndDirty);
+	if(jjtemp) { jlogmsg("gen str mod = ", iModifier, 0); }
 	// Generic Attack bonus
 	int iTempModifier = getAttackModifier();
 	iModifier += iTempModifier;
-
+	if(jjtemp) {
+		jlogmsg("gen att mod = ",iTempModifier,0);}
 	// Kamikaze attack
 	if(getKamikazePercent() != 0)
 	{
 		iTempModifier = getKamikazePercent();
+		if(jjtemp) {jlogmsg("kama att mod = ",iTempModifier,0);}
 		iModifier += iTempModifier;
 	}
 
@@ -16255,9 +16448,10 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 	if(GET_PLAYER(getOwner()).GetAttackBonusTurns() > 0)
 	{
 		iTempModifier = /*20*/ GC.getPOLICY_ATTACK_BONUS_MOD();
+		if(jjtemp) {jlogmsg("policy mod = ",iTempModifier,0);}
 		iModifier += iTempModifier;
 	}
-
+if(jjtemp) {jlogmsg("current bonus mod = ",iModifier,0);}
 #if defined(MOD_BALANCE_CORE_MILITARY_PROMOTION_ADVANCED)
 	//If Japan, you should get stronger as you lose health.
 	if(MOD_BALANCE_CORE_MILITARY_PROMOTION_ADVANCED && GET_PLAYER(getOwner()).GetPlayerTraits()->IsFightWellDamaged())
@@ -16284,6 +16478,7 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 		}
 	}
 #endif
+if(jjtemp) {jlogmsg("current bonus mod 2 = ",iModifier,0);}
 #if defined(MOD_BALANCE_CORE)
 	// Adjacent Friendly military Unit? (attack mod only)
 	if (pFromPlot != NULL && !bIgnoreUnitAdjacencyBoni && !bQuickAndDirty && pFromPlot->IsFriendlyUnitAdjacent(getTeam(), /*bCombatUnit*/ true))
@@ -16302,7 +16497,7 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 		}
 	}
 #endif
-
+if(jjtemp) {jlogmsg("current bonus mod 3 = ",iModifier,0);}
 	////////////////////////
 	// KNOWN DESTINATION PLOT
 	////////////////////////
@@ -16314,10 +16509,12 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 		{
 			iTempModifier = cityAttackModifier();
 			iModifier += iTempModifier;
+			if(jjtemp) {jlogmsg("att city mod = ",iTempModifier,0);}
 
 			// Nearby unit sapping this city
 			iTempModifier = GetAreaEffectBonus(AE_SAPPER, pFromPlot, pToPlot->getPlotCity());
 			iModifier += iTempModifier;
+			if(jjtemp) {jlogmsg("sapping city mod = ",iTempModifier,0);}
 
 #if defined(MOD_BALANCE_CORE)
 			//bonus for attacking same unit over and over in a turn?
@@ -16325,6 +16522,7 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 			if (iTempModifier != 0)
 			{
 				iTempModifier *= pToPlot->getPlotCity()->GetNumTimesAttackedThisTurn(getOwner());
+				if(jjtemp) {jlogmsg("multi att mod = ",iTempModifier,0);}
 				iModifier += iTempModifier;
 			}
 #endif
@@ -16334,6 +16532,7 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 			{
 				iTempModifier = GC.getBARBARIAN_CITY_ATTACK_MODIFIER();
 				iModifier += iTempModifier;
+				if(jjtemp) {jlogmsg("city def against barb mod = ",iTempModifier,0);}
 			}
 		}
 		// Some bonuses only apply when NOT attacking a city
@@ -16344,6 +16543,7 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 			{
 				iTempModifier = hillsAttackModifier();
 				iModifier += iTempModifier;
+				if(jjtemp) {jlogmsg(" att hills mod = ",iTempModifier,0);}
 			}
 
 			// Attacking into Open Ground
@@ -16351,6 +16551,7 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 			{
 				iTempModifier = openAttackModifier();
 				iModifier += iTempModifier;
+				if(jjtemp) {jlogmsg("att open mod = ",iTempModifier,0);}
 			}
 
 			// Attacking into Rough Ground
@@ -16358,6 +16559,7 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 			{
 				iTempModifier = roughAttackModifier();
 				iModifier += iTempModifier;
+				if(jjtemp) {jlogmsg("att rough mod = ",iTempModifier,0);}
 			}
 
 			// Attacking into a Feature
@@ -16365,18 +16567,21 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 			{
 				iTempModifier = featureAttackModifier(pToPlot->getFeatureType());
 				iModifier += iTempModifier;
+				if(jjtemp) {jlogmsg("att feature mod = ",iTempModifier,0);}
 			}
 			// No Feature - Use Terrain Attack Mod
 			else
 			{
 				iTempModifier = terrainAttackModifier(pToPlot->getTerrainType());
 				iModifier += iTempModifier;
+				if(jjtemp) {jlogmsg("terrain att mod = ",iTempModifier,0);}
 
 				// Tack on Hills Attack Mod
 				if(pToPlot->isHills())
 				{
 					iTempModifier = terrainAttackModifier(TERRAIN_HILL);
 					iModifier += iTempModifier;
+					if(jjtemp) {jlogmsg("hill2 att mod = ",iTempModifier,0);}
 				}
 			}
 		}
@@ -16394,6 +16599,7 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 				{
 					iTempModifier = GC.getRIVER_ATTACK_MODIFIER();
 					iModifier += iTempModifier;
+					if(jjtemp) {jlogmsg("att river mod = ",iTempModifier,0);}
 				}
 			}
 
@@ -16404,6 +16610,7 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 				{
 					iTempModifier = GC.getAMPHIB_ATTACK_MODIFIER();
 					iModifier += iTempModifier;
+					if(jjtemp) {jlogmsg("att sea mod = ",iTempModifier,0);}
 				}
 			}
 		}
@@ -16420,22 +16627,27 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 		// Unit Class Attack Modifier
 		iTempModifier = unitClassAttackModifier(pDefender->getUnitClassType());
 		iModifier += iTempModifier;
+		if(jjtemp) {jlogmsg("unit class att mod = ",iTempModifier,0);}
 
 		// Bonus VS fortified
-		if(pDefender->IsFortified())
+		if(pDefender->IsFortified()){
 			iModifier += attackFortifiedModifier();
-
+if(jjtemp) {jlogmsg("att fort mod = ",attackFortifiedModifier(),0);}}
 		// Bonus VS wounded
-		if (pDefender->getDamage() > 0)
+		if (pDefender->getDamage() > 0){
 			iModifier += attackWoundedModifier();
-		else
+			if(jjtemp) {jlogmsg("att wounded mod = ",attackWoundedModifier(),0);}}
+		else{
 			iModifier += attackFullyHealedModifier();
+				if(jjtemp) {jlogmsg("att full heal mod = ",attackFullyHealedModifier(),0);}}
 
 		//More than half?
-		if (pDefender->getDamage() < (pDefender->GetMaxHitPoints()/2))
+		if (pDefender->getDamage() < (pDefender->GetMaxHitPoints()/2)){
 			iModifier += attackAbove50HealthModifier();
-		else
+			if(jjtemp) {jlogmsg("att above 50 mod = ",attackAbove50HealthModifier(),0);}}
+		else{
 			iModifier += attackBelow50HealthModifier();
+			if(jjtemp) {jlogmsg("att above 50 mod = ",attackBelow50HealthModifier(),0);}}
 
 		//bonus for attacking same unit over and over in a turn?
 		iTempModifier = getMultiAttackBonus() + GET_PLAYER(getOwner()).GetPlayerTraits()->GetMultipleAttackBonus();
@@ -16443,6 +16655,7 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 		{
 			iTempModifier *= pDefender->GetNumTimesAttackedThisTurn(getOwner());
 			iModifier += iTempModifier;
+			if(jjtemp) {jlogmsg("att multi times mod = ",iTempModifier,0);}
 		}
 	}
 
@@ -16450,10 +16663,18 @@ int CvUnit::GetMaxAttackStrength(const CvPlot* pFromPlot, const CvPlot* pToPlot,
 	if(iModifier < -90)
 		iModifier = -90;
 
+if(jjtemp) {jlogmsg("final mod = ",iModifier,0);
+jlogmsg("combat before = ", GetBaseCombatStrength(),0);}
+
 	int iCombat = GetBaseCombatStrength() * (iModifier + 100);
+
+if(jjtemp) {jlogmsg("combat after = ",iCombat,0);}
+//jLog2->Close();
 
 	return std::max(1, iCombat);
 }
+
+
 
 //	--------------------------------------------------------------------------------
 /// What is the max strength of this Unit when defending?
@@ -16461,6 +16682,9 @@ int CvUnit::GetMaxDefenseStrength(const CvPlot* pInPlot, const CvUnit* pAttacker
 {
 	VALIDATE_OBJECT
 
+//FILogFile* jLog3;
+	//jLog3 = LOGFILEMGR.GetLog("combatlog3", FILogFile::kDontTimeStamp);
+		
 	//no modifiers for embarked defense
 	if ( (!pInPlot && isEmbarked()) || (pInPlot && pInPlot->needsEmbarkation(this) && CanEverEmbark()) )
 		return GetEmbarkedUnitDefense();
@@ -16469,17 +16693,36 @@ int CvUnit::GetMaxDefenseStrength(const CvPlot* pInPlot, const CvUnit* pAttacker
 	if (iCombat==0)
 		return 0;
 
+
+
+
 	int iTempModifier;
+	
+extern int jjC;
+extern int jjCOther;
+
+int jjtemp = 0;
+if(m_iTracked && jjCOther){
+	jjtemp = 1;
+}else if(jjC){
+	jjtemp = 1;
+}
+	
 	int iModifier = GetGenericMaxStrengthModifier(pAttacker, pInPlot, /*bIgnoreUnitAdjacency*/ bFromRangedAttack, pInPlot, bQuickAndDirty);
 
+if(jjtemp) {jlogmsg("base combat def = ",iCombat,0);}
+if(jjtemp) {jlogmsg("base maxstr mod def = ",iModifier,0);}
 	// Generic Defense Bonus
 	iTempModifier = getDefenseModifier();
 	iModifier += iTempModifier;
+if(jjtemp) {jlogmsg("Generic Defense Bonus = ",iTempModifier,0);}
 
 	// Defense against Ranged
-	if(bFromRangedAttack)
+	if(bFromRangedAttack){
 		iModifier += rangedDefenseModifier();
-
+	if(jjtemp) {jlogmsg("Defense against Ranged = ",rangedDefenseModifier(),0);}}
+	
+if(jjtemp) {jlogmsg("Current mod before stronger injured, monop, adj friend = ",iModifier,0);}
 #if defined(MOD_BALANCE_CORE_MILITARY_PROMOTION_ADVANCED)
 	//If Japan, you should get stronger as you lose health.
 	if(MOD_BALANCE_CORE_MILITARY_PROMOTION_ADVANCED && GET_PLAYER(getOwner()).GetPlayerTraits()->IsFightWellDamaged())
@@ -16525,6 +16768,7 @@ int CvUnit::GetMaxDefenseStrength(const CvPlot* pInPlot, const CvUnit* pAttacker
 	}
 #endif
 
+if(jjtemp) {jlogmsg("Current mod after stronger injured, monop, adj friend = ",iModifier,0);}
 	////////////////////////
 	// KNOWN DEFENSE PLOT
 	////////////////////////
@@ -16535,18 +16779,22 @@ int CvUnit::GetMaxDefenseStrength(const CvPlot* pInPlot, const CvUnit* pAttacker
 		iTempModifier = pInPlot->defenseModifier(getTeam(), (pAttacker != NULL) ? pAttacker->ignoreBuildingDefense() : false, false);
 
 		// If we receive normal defensive bonuses OR iTempModifier is actually a PENALTY, then add in the mod
-		if(!noDefensiveBonus() || iTempModifier < 0)
+		if(!noDefensiveBonus() || iTempModifier < 0){
 			iModifier += iTempModifier;
+			if(jjtemp) {jlogmsg("terrain bonus = ",iTempModifier,0);}
+		}
 
 		// Fortification
 		iTempModifier = fortifyModifier();
 		iModifier += iTempModifier;
+		if(jjtemp) {jlogmsg("fort bonus = ",iTempModifier,0);}
 
 		// City Defense
 		if(pInPlot->isCity())
 		{
 			iTempModifier = cityDefenseModifier();
 			iModifier += iTempModifier;
+			if(jjtemp) {jlogmsg("city def bonus = ",iTempModifier,0);}
 		}
 
 		// Hill Defense
@@ -16554,6 +16802,7 @@ int CvUnit::GetMaxDefenseStrength(const CvPlot* pInPlot, const CvUnit* pAttacker
 		{
 			iTempModifier = hillsDefenseModifier();
 			iModifier += iTempModifier;
+			if(jjtemp) {jlogmsg("hill def mod = ",iTempModifier,0);}
 		}
 
 		// Open Ground Defense
@@ -16561,6 +16810,7 @@ int CvUnit::GetMaxDefenseStrength(const CvPlot* pInPlot, const CvUnit* pAttacker
 		{
 			iTempModifier = openDefenseModifier();
 			iModifier += iTempModifier;
+			if(jjtemp) {jlogmsg("open ground bonus = ",iTempModifier,0);}
 		}
 
 		// Rough Ground Defense
@@ -16568,6 +16818,7 @@ int CvUnit::GetMaxDefenseStrength(const CvPlot* pInPlot, const CvUnit* pAttacker
 		{
 			iTempModifier = roughDefenseModifier();
 			iModifier += iTempModifier;
+			if(jjtemp) {jlogmsg("rough def mod = ",iTempModifier,0);}
 		}
 
 		// Feature Defense
@@ -16575,18 +16826,21 @@ int CvUnit::GetMaxDefenseStrength(const CvPlot* pInPlot, const CvUnit* pAttacker
 		{
 			iTempModifier = featureDefenseModifier(pInPlot->getFeatureType());
 			iModifier += iTempModifier;
+			if(jjtemp) {jlogmsg("feature def mod = ",iTempModifier,0);}
 		}
 		// No Feature - use Terrain Defense Mod
 		else
 		{
 			iTempModifier = terrainDefenseModifier(pInPlot->getTerrainType());
 			iModifier += iTempModifier;
+			if(jjtemp) {jlogmsg("2nd terrain def mod = ",iTempModifier,0);}
 
 			// Tack on Hills Defense Mod
 			if(pInPlot->isHills())
 			{
 				iTempModifier = terrainDefenseModifier(TERRAIN_HILL);
 				iModifier += iTempModifier;
+				if(jjtemp) {jlogmsg("2nd hill def mod = ",iTempModifier,0);}
 			}
 		}
 	}
@@ -16602,15 +16856,19 @@ int CvUnit::GetMaxDefenseStrength(const CvPlot* pInPlot, const CvUnit* pAttacker
 		// Unit Class Defense Modifier
 		iTempModifier = unitClassDefenseModifier(pAttacker->getUnitClassType());
 		iModifier += iTempModifier;
+		if(jjtemp) {jlogmsg("unit class def mod bonus = ",iTempModifier,0);}
 	}
 
 	// Unit can't drop below 10% strength
 	if(iModifier < -90)
 		iModifier = -90;
+if(jjtemp) {jlogmsg("final mod = ",iModifier,0);
+jlogmsg("combat before = ",iCombat,0);}
 
 	// finally apply the modifier
 	iCombat *= (iModifier + 100);
 
+if(jjtemp) {jlogmsg("combat after = ",iCombat,0);}
 	// Boats do more damage VS one another
 	if(pAttacker != NULL)
 	{
@@ -16620,6 +16878,7 @@ int CvUnit::GetMaxDefenseStrength(const CvPlot* pInPlot, const CvUnit* pAttacker
 			iCombat /= 100;
 		}
 	}
+//jLog3->Close();
 
 	return std::max(1, iCombat);
 }
@@ -16746,6 +17005,15 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		pMyPlot = pFromPlot;
 	}
 	
+	extern int jjC;
+	extern int jjCOther;
+	 int jjtemp = 0;
+  if(m_iTracked && jjCOther){
+		jjtemp = 1;
+	}else{
+		jjtemp = jjC;
+	}
+	
 	int iModifier;
 	int iTempModifier;
 
@@ -16774,12 +17042,39 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		return 0;
 	}
 
+
 	// Extra combat percent
 	iModifier = getExtraCombatPercent();
+	
+	if(jjtemp) {
 
+		jlogmsg("base att combat str = ", iBaseStrength, 0);
+		jlogmsg("Gen combat bonus = ", iModifier, 0);
+
+		std::stringstream jjpromos;
+
+		for (int iI = 0; iI < GC.getNumPromotionInfos(); iI++)
+		{
+			const PromotionTypes ePromotion = static_cast<PromotionTypes>(iI);
+			if (isHasPromotion(ePromotion)) {
+				CvPromotionEntry* pkPromotionInfo = GC.getPromotionInfo(ePromotion);
+				jjpromos << pkPromotionInfo->GetType() << " + " << pkPromotionInfo->GetCombatPercent() << " , ";
+			}
+
+		}
+
+		if (jjpromos) {
+
+			std::string jjp = jjpromos.str();
+
+			jlogmsg(jjp.data(), 0, 0);
+		}
+	}
 	// Kamikaze attack
-	if(getKamikazePercent() != 0)
+	if(getKamikazePercent() != 0){
 		iModifier += getKamikazePercent();
+		if(jjtemp){jlogmsg("kamikaze = ",getKamikazePercent(),0);}
+		}
 
 	// If the empire is unhappy, then Units get a combat penalty
 #if defined(MOD_GLOBAL_CS_RAZE_RARELY)
@@ -16789,6 +17084,7 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 #endif
 	{
 		iModifier += GetUnhappinessCombatPenalty();
+		if(jjtemp){jlogmsg("unhappyness = ",GetUnhappinessCombatPenalty(),0);}
 	}
 
 #if defined(MOD_BALANCE_CORE_MILITARY)
@@ -16796,18 +17092,22 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 #else
 	// Over our strategic resource limit?
 	iTempModifier = GetStrategicResourceCombatPenalty();
-	if(iTempModifier != 0)
+	if(iTempModifier != 0){
 		iModifier += iTempModifier;
+		if(jjtemp){jlogmsg("strat resource = ",iTempModifier,0);}
+	}
 #endif
 	if (GetNearbyCityBonusCombatMod(pMyPlot) != 0)
 	{
 		iModifier += GetNearbyCityBonusCombatMod(pMyPlot);
+		if(jjtemp){jlogmsg("GetNearbyCityBonusCombatMod = ",GetNearbyCityBonusCombatMod(pMyPlot),0);}
 	}
 
 	// Great General nearby
 	if (!bIgnoreUnitAdjacencyBoni && !IsIgnoreGreatGeneralBenefit())
 	{
 		iModifier += GetAreaEffectBonus(AE_GREAT_GENERAL, pMyPlot);
+		if(jjtemp){jlogmsg("Greatgeneral = ",GetAreaEffectBonus(AE_GREAT_GENERAL, pMyPlot),0);}
 	}
 
 	// sometimes we want to ignore the finer points
@@ -16818,6 +17118,7 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		if (iReverseGGModifier != 0)
 		{
 			iModifier += iReverseGGModifier;
+			if(jjtemp){jlogmsg("reverse Greatgeneral = ",iReverseGGModifier,0);}
 		}
 
 		// Improvement with combat bonus (from trait) nearby
@@ -16825,28 +17126,34 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		if (iNearbyImprovementModifier != 0)
 		{
 			iModifier += iNearbyImprovementModifier;
+			if(jjtemp){jlogmsg(" iNearbyImprovementModifier = ",iNearbyImprovementModifier,0);}
 		}
 		// UnitClass grants a combat bonus if nearby
 		int iNearbyUnitClassModifier = GetNearbyUnitClassModifierFromUnitClass();
 		if (iNearbyUnitClassModifier != 0)
 		{
 			iModifier += iNearbyUnitClassModifier;
+			if(jjtemp){jlogmsg(" iNearbyUnitClassModifier = ",iNearbyUnitClassModifier,0);}
 		}
 	}
 
 	// Our empire fights well in Golden Ages?
-	if(kPlayer.isGoldenAge())
+	if(kPlayer.isGoldenAge()){
 		iModifier += pTraits->GetGoldenAgeCombatModifier();
+		if(jjtemp){jlogmsg(" isGoldenAge = ",pTraits->GetGoldenAgeCombatModifier(),0);}
+	}
 
 #if defined(MOD_BALANCE_CORE_MILITARY_PROMOTION_ADVANCED)
 	//If Japan, you should get stronger as you lose health.
 	if (MOD_BALANCE_CORE_MILITARY_PROMOTION_ADVANCED && GET_PLAYER(getOwner()).GetPlayerTraits()->IsFightWellDamaged())
 	{
 		iModifier += (getDamage() / 5);
+		if(jjtemp){jlogmsg(" stronger as dmgd = ",(getDamage() / 5),0);}
 	}
 	if (MOD_BALANCE_CORE_MILITARY_PROMOTION_ADVANCED && IsStrongerDamaged())
 	{
 		iModifier += (getDamage() / 3);
+		if(jjtemp){jlogmsg(" stronger as dmgd 2 = ",(getDamage() / 3),0);}
 	}
 #endif
 #if defined(MOD_BALANCE_CORE_RESOURCE_MONOPOLIES)
@@ -16860,6 +17167,7 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 			if (pInfo && pInfo->getMonopolyAttackBonus() > 0)
 			{
 				iModifier += pInfo->getMonopolyAttackBonus();
+				if(jjtemp){jlogmsg(" monoply bonus = ",pInfo->getMonopolyAttackBonus(),0);}
 			}
 		}
 	}
@@ -16875,12 +17183,16 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		if (bForRangedAttack)
 		{
 			// Open Ground
-			if (pTargetPlot->isOpenGround())
+			if (pTargetPlot->isOpenGround()){
 				iModifier += openRangedAttackModifier();
+				if(jjtemp){jlogmsg("openRangedAttackModifier = ",openRangedAttackModifier(),0);}
+			}
 
 			// Rough Ground
-			if (pTargetPlot->isRoughGround())
+			if (pTargetPlot->isRoughGround()){
 				iModifier += roughRangedAttackModifier();
+				if(jjtemp){jlogmsg("roughRangedAttackModifier = ",roughRangedAttackModifier(),0);}
+				}
 		}
 
 		// Bonus for fighting in one's lands
@@ -16888,6 +17200,7 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		{
 			iTempModifier = getFriendlyLandsModifier();
 			iModifier += iTempModifier;
+			if(jjtemp){jlogmsg("IsFriendlyTerritory = ",iTempModifier,0);}
 
 			// Founder Belief bonus
 			CvCity* pPlotCity = pTargetPlot->getOwningCity();
@@ -16907,6 +17220,7 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 						}
 						iTempModifier = pCityReligion->m_Beliefs.GetCombatModifierFriendlyCities(getOwner(), pHolyCity);
 						iModifier += iTempModifier;
+						if(jjtemp){jlogmsg("Founder Belief bonus = ",iTempModifier,0);}
 					}
 				}
 			}
@@ -16917,6 +17231,7 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		{
 			iTempModifier = getOutsideFriendlyLandsModifier();
 			iModifier += iTempModifier;
+			if(jjtemp){jlogmsg("OutsideFriendlyLands bonus = ",iTempModifier,0);}
 
 			// Founder Belief bonus (this must be a city controlled by an enemy)
 			CvCity* pPlotCity = pTargetPlot->getOwningCity();
@@ -16938,6 +17253,7 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 							}
 							iTempModifier = pCityReligion->m_Beliefs.GetCombatModifierEnemyCities(getOwner(), pHolyCity);
 							iModifier += iTempModifier;
+							if(jjtemp){jlogmsg("religion bonus outside = ",iTempModifier,0);}
 						}
 					}
 				}
@@ -16953,36 +17269,52 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 	{
 		// Unit Class Mod
 		iModifier += getUnitClassModifier(pOtherUnit->getUnitClassType());
+		if(jjtemp){jlogmsg("UnitClassModifier = ",getUnitClassModifier(pOtherUnit->getUnitClassType()),0);}
 
 		// Unit combat modifier VS other unit
-		if(pOtherUnit->getUnitCombatType() != NO_UNITCOMBAT)
+		if(pOtherUnit->getUnitCombatType() != NO_UNITCOMBAT){
 			iModifier += unitCombatModifier((UnitCombatTypes)pOtherUnit->getUnitCombatType());
+			if(jjtemp){jlogmsg("Unit combat modifier VS other unit = ",unitCombatModifier((UnitCombatTypes)pOtherUnit->getUnitCombatType()),0);}
+		}
 
 		// Domain modifier VS other unit
 		iModifier += domainModifier(pOtherUnit->getDomainType());
+		if(jjtemp){jlogmsg(" Domain modifier = ",domainModifier(pOtherUnit->getDomainType()),0);}
 
 		// Bonus VS fortified
-		if(pOtherUnit->IsFortified())
+		if(pOtherUnit->IsFortified()){
 			iModifier += attackFortifiedModifier();
+			if(jjtemp){jlogmsg("Bonus VS fortified = ",attackFortifiedModifier(),0);}
+		}
 
 		// Bonus VS wounded
-		if(pOtherUnit->getDamage() > 0)
+		if(pOtherUnit->getDamage() > 0){
 			iModifier += attackWoundedModifier();
-		else
+			if(jjtemp){jlogmsg("Bonus VS wounded = ",attackWoundedModifier(),0);}
+		}
+		else{
 			iModifier += attackFullyHealedModifier();
+			if(jjtemp){jlogmsg("attackFullyHealedModifier = ",attackFullyHealedModifier(),0);}
+		}
 
 		//More than half?
-		if (pOtherUnit->getDamage() < (pOtherUnit->GetMaxHitPoints() * .5))
+		if (pOtherUnit->getDamage() < (pOtherUnit->GetMaxHitPoints() * .5)){
 			iModifier += attackAbove50HealthModifier();
-		else
+			if(jjtemp){jlogmsg("attackAbove50HealthModifier = ",attackAbove50HealthModifier(),0);}
+		}
+		else{
 			iModifier += attackBelow50HealthModifier();
+			if(jjtemp){jlogmsg("attackBelow50HealthModifier = ",attackBelow50HealthModifier(),0);}
+		}
 
 		// Bonus against city states?
 		if(GET_PLAYER(pOtherUnit->getOwner()).isMinorCiv())
 		{
 			iModifier += pTraits->GetCityStateCombatModifier();
+			if(jjtemp){jlogmsg("Bonus against city states = ",pTraits->GetCityStateCombatModifier(),0);}
 #if defined(MOD_BALANCE_CORE)
 			iModifier += kPlayer.GetCityStateCombatModifier();
+			if(jjtemp){jlogmsg("Bonus against city states 2 = ",kPlayer.GetCityStateCombatModifier(),0);}
 #endif
 		}
 
@@ -16992,6 +17324,7 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		{
 			iTempModifier *= pOtherUnit->GetNumTimesAttackedThisTurn(getOwner());
 			iModifier += iTempModifier;
+			if(jjtemp){jlogmsg("Bonus attacking same unit = ",iTempModifier,0);}
 		}
 
 		// OTHER UNIT is a Barbarian
@@ -17000,6 +17333,7 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 			// Generic Barb Combat Bonus
 			iTempModifier = kPlayer.GetBarbarianCombatBonus();
 			iModifier += iTempModifier;
+			if(jjtemp){jlogmsg("Generic Barb Combat Bonus = ",iTempModifier,0);}
 
 			const CvHandicapInfo& thisGameHandicap = GC.getGame().getHandicapInfo();
 
@@ -17008,17 +17342,20 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 			{
 				iTempModifier = thisGameHandicap.getBarbarianCombatModifier();
 				iModifier += iTempModifier;
+				if(jjtemp){jlogmsg("Human bonus = ",iTempModifier,0);}
 			}
 			// AI bonus
 			else
 			{
 				iTempModifier = thisGameHandicap.getAIBarbarianCombatModifier();
 				iModifier += iTempModifier;
+				if(jjtemp){jlogmsg("AI bonus = ",iTempModifier,0);}
 			}
 
 			if(GC.getGame().isOption(GAMEOPTION_RAGING_BARBARIANS))
 			{
 				iModifier += 25;
+				if(jjtemp){jlogmsg("raging barb bonus = ",25,0);}
 			}
 		}
 
@@ -17027,6 +17364,8 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		{
 			// Unit Class Attack Mod
 			iModifier += unitClassAttackModifier(pOtherUnit->getUnitClassType());
+			if(jjtemp){jlogmsg("Unit Class Attack Mod = ",unitClassAttackModifier(pOtherUnit->getUnitClassType()),0);}
+			
 		}
 
 		// Ranged DEFENSE
@@ -17034,6 +17373,7 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		{
 			// Unit Class Defense Mod
 			iModifier += unitClassDefenseModifier(pOtherUnit->getUnitClassType());
+			if(jjtemp){jlogmsg("Unit Class Defense Mod = ",unitClassDefenseModifier(pOtherUnit->getUnitClassType()),0);}
 		}
 	}
 
@@ -17045,9 +17385,11 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 	{
 		// Attacking a City
 		iModifier += cityAttackModifier();
+		if(jjtemp){jlogmsg("Attacking a City Mod = ",cityAttackModifier(),0);}
 
 		// Nearby unit sapping this city
 		iModifier += GetAreaEffectBonus(AE_SAPPER, pMyPlot, pCity);
+		if(jjtemp){jlogmsg("Nearby unit sapping this city Mod = ",GetAreaEffectBonus(AE_SAPPER, pMyPlot, pCity),0);}
 
 		//bonus for attacking same unit over and over in a turn?
 		iTempModifier = getMultiAttackBonus() + GET_PLAYER(getOwner()).GetPlayerTraits()->GetMultipleAttackBonus();
@@ -17055,13 +17397,16 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		{
 			iTempModifier *= pCity->GetNumTimesAttackedThisTurn(getOwner());
 			iModifier += iTempModifier;
+			if(jjtemp){jlogmsg("bonus for attacking same unit over and over = ",iTempModifier,0);}
 		}
 		// Bonus against city states?
 		if(GET_PLAYER(pCity->getOwner()).isMinorCiv())
 		{
 			iModifier += pTraits->GetCityStateCombatModifier();
+			if(jjtemp){jlogmsg("bonus for attacking city state city 1 = ",pTraits->GetCityStateCombatModifier(),0);}
 #if defined(MOD_BALANCE_CORE)
 			iModifier += kPlayer.GetCityStateCombatModifier();
+			if(jjtemp){jlogmsg("bonus for attacking city state city 2 = ",kPlayer.GetCityStateCombatModifier(),0);}
 #endif
 		}
 #if defined(MOD_BALANCE_CORE)
@@ -17071,6 +17416,7 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 			if(kPlayer.isGoldenAge())
 			{
 				iModifier += pTraits->GetConquestOfTheWorldCityAttack();
+				if(jjtemp){jlogmsg("bonus for attacking major civ = ",pTraits->GetConquestOfTheWorldCityAttack(),0);}
 			}
 		}
 #endif
@@ -17080,17 +17426,20 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 	if(bForRangedAttack)
 	{
 		iModifier += GetRangedAttackModifier();
+		if(jjtemp){jlogmsg("Ranged attack mod = ",GetRangedAttackModifier(),0);}
 	}
 	else
 	{
 		// Ranged Defense Mod (this was under the known unit bit, which is stupid)
 		iModifier += rangedDefenseModifier();
+		if(jjtemp){jlogmsg("rangedDefenseModifier = ",rangedDefenseModifier(),0);}
 	}
 
 	// This unit on offense
 	if(bAttacking)
 	{
 		iModifier += getAttackModifier();
+		if(jjtemp){jlogmsg("AttackModifier = ",getAttackModifier(),0);}
 	}
 	// This Unit on defense
 	else
@@ -17099,10 +17448,13 @@ int CvUnit::GetMaxRangedCombatStrength(const CvUnit* pOtherUnit, const CvCity* p
 		iTempModifier = pMyPlot->defenseModifier(getTeam(), pOtherUnit ? pOtherUnit->ignoreBuildingDefense() : false, false);
 
 		// If we receive normal defensive bonuses OR iTempModifier is actually a PENALTY, then add in the mod
-		if(!noDefensiveBonus() || iTempModifier < 0)
+		if(!noDefensiveBonus() || iTempModifier < 0){
 			iModifier += iTempModifier;
+			if(jjtemp){jlogmsg("terrain bonus1 = ",iTempModifier,0);}
+		}
 
 		iModifier += getDefenseModifier();
+		if(jjtemp){jlogmsg("terrain bonus2 = ",getDefenseModifier(),0);}
 	}
 
 	// Unit can't drop below 10% strength
@@ -17287,7 +17639,16 @@ int CvUnit::GetRangeCombatDamage(const CvUnit* pDefender, CvCity* pCity, bool bI
 			pTargetPlot = pCity->plot();
 		}
 	}
-
+  extern int jjC;
+  int jjtemp = 0;
+  if(m_iTracked){
+		jjtemp = 1;
+	}else{
+		jjtemp = jjC;
+	}
+  
+  
+  
 	int iAttackerStrength = GetMaxRangedCombatStrength(pDefender, pCity, true, /*bForRangedAttack*/ true, 
 									pTargetPlot, pFromPlot, bIgnoreUnitAdjacencyBoni, bQuickAndDirty);
 	if (iAttackerStrength==0)
@@ -17359,15 +17720,20 @@ int CvUnit::GetRangeCombatDamage(const CvUnit* pDefender, CvCity* pCity, bool bI
 		iAttackerDamageRatio = 0;
 
 	int iAttackerDamage = /*250*/ GC.getRANGE_ATTACK_SAME_STRENGTH_MIN_DAMAGE();
+	
+	if(bIncludeRand && jjtemp){jlogmsg("base range dmg = ",iAttackerDamage,0);}
 	iAttackerDamage *= iAttackerDamageRatio;
 	iAttackerDamage /= GC.getMAX_HIT_POINTS();
 
+if(bIncludeRand && jjtemp){jlogmsg("dmg after wounded calc = ",iAttackerDamage,0);}
 	int iAttackerRoll = 0;
 	if(bIncludeRand)
 	{
 		iAttackerRoll = /*300*/ GC.getGame().getSmallFakeRandNum(GC.getRANGE_ATTACK_SAME_STRENGTH_POSSIBLE_EXTRA_DAMAGE(), *plot());
+		if(bIncludeRand && jjtemp){jlogmsg("dmg roll = ",iAttackerRoll,0);}
 		iAttackerRoll *= iAttackerDamageRatio;
 		iAttackerRoll /= GC.getMAX_HIT_POINTS();
+		
 	}
 	else
 	{
@@ -17378,7 +17744,7 @@ int CvUnit::GetRangeCombatDamage(const CvUnit* pDefender, CvCity* pCity, bool bI
 		iAttackerRoll /= 2;	// The divide by 2 is to provide the average damage
 	}
 	iAttackerDamage += iAttackerRoll;
-
+if(bIncludeRand && jjtemp){jlogmsg("dmg after roll = ",iAttackerDamage,0);} 
 	double fStrengthRatio = (iDefenderStrength > 0)?(double(iAttackerStrength) / iDefenderStrength):double(iAttackerStrength);
 
 	// In case our strength is less than the other guy's, we'll do things in reverse then make the ratio 1 over the result
@@ -17397,6 +17763,14 @@ int CvUnit::GetRangeCombatDamage(const CvUnit* pDefender, CvCity* pCity, bool bI
 		fStrengthRatio = 1 / fStrengthRatio;
 	}
 
+if(bIncludeRand && jjtemp){
+	
+	jlogmsg("def str = ",iDefenderStrength,0);
+	jlogmsg("att str = ",iAttackerStrength,0);
+	jlogmsg("str ratio = ",0,fStrengthRatio);
+	
+	}
+	
 	double fAttackerDamage = (double)iAttackerDamage * fStrengthRatio;
 	// Protect against it overflowing an int
 	if(fAttackerDamage > INT_MAX)
@@ -17406,6 +17780,8 @@ int CvUnit::GetRangeCombatDamage(const CvUnit* pDefender, CvCity* pCity, bool bI
 
 	// Bring it back out of hundreds
 	iAttackerDamage /= 100;
+
+if(bIncludeRand && jjtemp){jlogmsg("FINAL DMG = ",iAttackerDamage,0);} 
 
 	return max(1,iAttackerDamage);
 }
@@ -21427,6 +21803,9 @@ int CvUnit::setDamage(int iNewValue, PlayerTypes ePlayer, float fAdditionalTextD
 
 	if(IsDead())
 	{
+		if(m_iTracked){
+			jlogmsg("Died",0,0);
+		}
 #if !defined(NO_ACHIEVEMENTS)
 		CvGame& game = GC.getGame();
 		const PlayerTypes eActivePlayer = game.getActivePlayer();

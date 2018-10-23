@@ -2790,6 +2790,20 @@ bool CvGlobals::getAILogging()
 	return m_bAILogging;
 }
 
+int CvGlobals::getJJCLogging(int whichjj)
+{
+	
+	if(whichjj == 1){
+		return m_iJJCLogging;
+	}else if(whichjj == 2){
+		return m_iJJC2Logging;
+	}
+	else{
+		return m_iJJC3Logging;
+	}
+	
+}
+
 void CvGlobals::setAILogging(bool bEnable)
 {
 	m_bAILogging = bEnable;
@@ -4720,6 +4734,9 @@ void CvGlobals::cacheGlobals()
 {
 	// -- ints --
 
+	m_iJJCLogging = getDefineINT("JJCLOG");
+	m_iJJC2Logging = getDefineINT("JJCLOG2");
+	m_iJJC3Logging = getDefineINT("JJCLOG3");
 	m_iAI_ATTEMPT_RUSH_OVER_X_TURNS_TO_BUILD = getDefineINT("AI_ATTEMPT_RUSH_OVER_X_TURNS_TO_BUILD");
 	m_iINITIAL_AI_CITY_PRODUCTION = getDefineINT("INITIAL_AI_CITY_PRODUCTION");
 	m_iAI_CAN_DISBAND_UNITS = getDefineINT("AI_CAN_DISBAND_UNITS");

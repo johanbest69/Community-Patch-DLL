@@ -231,6 +231,8 @@ public:
 
 	bool IsAngerFreeUnit() const;
 
+	bool jlogmsg(const char * jString, int jInt, double jDouble) const;
+
 	int getCombatDamage(int iStrength, int iOpponentStrength, int iCurrentDamage, bool bIncludeRand, bool bAttackerIsCity, bool bDefenderIsCity) const;
 	void fightInterceptor(const CvPlot& pPlot);
 	void move(CvPlot& pPlot, bool bShow);
@@ -1925,6 +1927,8 @@ protected:
 	FAutoVariable<int, CvUnit> m_iX;
 	FAutoVariable<int, CvUnit> m_iY;
 	FAutoVariable<int, CvUnit> m_iID;
+
+	FAutoVariable<int, CvUnit> m_iTracked;
 
 	FAutoVariable<int, CvUnit> m_iHotKeyNumber;
 	FAutoVariable<int, CvUnit> m_iDeployFromOperationTurn;

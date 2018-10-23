@@ -237,6 +237,9 @@ public:
 
 	int getRandLogging();
 	void setRandLogging(int iRandLoggingFlags);
+	
+	int getJJCLogging(int whichjj);
+	
 
 	bool getAILogging();
 	void setAILogging(bool bEnable);
@@ -9190,6 +9193,9 @@ protected:
 
 	// -- ints --
 
+	int m_iJJCLogging;
+	int m_iJJC2Logging;
+	int m_iJJC3Logging;
 	int m_iAI_ATTEMPT_RUSH_OVER_X_TURNS_TO_BUILD;
 	int m_iINITIAL_AI_CITY_PRODUCTION;
 	int m_iAI_CAN_DISBAND_UNITS;
